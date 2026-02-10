@@ -51,7 +51,7 @@ function App() {
                             <Sparkles size={22} />
                         </div>
                         <div>
-                            <div className="sidebar-logo-text">AI Agent</div>
+                            <div className="sidebar-logo-text">AI Agent Hub</div>
                             <div className="sidebar-logo-subtitle">Automation Validation Team</div>
                         </div>
                     </div>

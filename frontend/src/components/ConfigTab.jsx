@@ -467,13 +467,11 @@ function ConfigTab() {
                             <input
                                 type="text"
                                 className="input"
-                                placeholder="http://codebeamer.yourcompany.com"
+                                placeholder="http://codebeamer.com"
                                 value={config.codebeamer.url}
                                 onChange={(e) => updateConfig('codebeamer', 'url', e.target.value)}
                             />
-                            <p className="text-sm" style={{ marginTop: '4px', color: 'var(--text-tertiary)' }}>
-                                Use HTTP (not HTTPS)
-                            </p>
+
                         </div>
                         <div className="input-group">
                             <label className="input-label">Username</label>

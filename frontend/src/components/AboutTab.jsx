@@ -63,7 +63,7 @@ function AboutTab() {
                             <Bot size={40} color="white" />
                         </div>
                     </div>
-                    <h1 className="page-title" style={{ fontSize: '2rem' }}>AI Agent</h1>
+                    <h1 className="page-title" style={{ fontSize: '2rem' }}>AI Agent Hub</h1>
                     <p className="page-subtitle" style={{ maxWidth: '600px', margin: '0 auto' }}>
                         AI-powered test automation platform for automotive embedded systems.
                         Generate, review, and improve Robot Framework tests with intelligent assistance.

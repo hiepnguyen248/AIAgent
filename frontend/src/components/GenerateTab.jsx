@@ -212,21 +212,21 @@ function GenerateTab() {
                             </select>
                         </div>
 
-                        {/* Output Folder - REQUIRED */}
+                        {/* Test Case IDs */}
                         <div className="input-group">
                             <label className="input-label">
-                                <FolderOpen size={14} style={{ display: 'inline', marginRight: '6px' }} />
-                                Output Folder <span style={{ color: 'var(--error)' }}>*</span>
+                                Test Case ID(s) <span style={{ color: 'var(--error)' }}>*</span>
                             </label>
-                            <input
-                                type="text"
-                                className="input"
-                                placeholder="D:\TestScripts\Generated"
-                                value={outputFolder}
-                                onChange={(e) => setOutputFolder(e.target.value)}
+                            <textarea
+                                className="input textarea"
+                                placeholder="Enter Test Case IDs (separated by comma, space, or new line)&#10;&#10;Example:&#10;TC-001, TC-002&#10;TC-003&#10;TC-004 TC-005"
+                                value={testCaseIds}
+                                onChange={(e) => setTestCaseIds(e.target.value)}
+                                rows={5}
+                                style={{ fontFamily: 'monospace' }}
                             />
                             <p className="text-sm" style={{ marginTop: '4px', color: 'var(--text-tertiary)' }}>
-                                Generated .robot files will be auto-saved to this folder
+                                {parseTestCaseIds(testCaseIds).length} test case(s) detected
                             </p>
                         </div>
 
@@ -267,21 +267,21 @@ function GenerateTab() {
                             )}
                         </div>
 
-                        {/* Test Case IDs */}
+                        {/* Output Folder - REQUIRED */}
                         <div className="input-group">
                             <label className="input-label">
-                                Test Case ID(s) <span style={{ color: 'var(--error)' }}>*</span>
+                                <FolderOpen size={14} style={{ display: 'inline', marginRight: '6px' }} />
+                                Output Folder <span style={{ color: 'var(--error)' }}>*</span>
                             </label>
-                            <textarea
-                                className="input textarea"
-                                placeholder="Enter Test Case IDs (separated by comma, space, or new line)&#10;&#10;Example:&#10;TC-001, TC-002&#10;TC-003&#10;TC-004 TC-005"
-                                value={testCaseIds}
-                                onChange={(e) => setTestCaseIds(e.target.value)}
-                                rows={5}
-                                style={{ fontFamily: 'monospace' }}
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="D:\TestScripts\Generated"
+                                value={outputFolder}
+                                onChange={(e) => setOutputFolder(e.target.value)}
                             />
                             <p className="text-sm" style={{ marginTop: '4px', color: 'var(--text-tertiary)' }}>
-                                {parseTestCaseIds(testCaseIds).length} test case(s) detected
+                                Generated .robot files will be auto-saved to this folder
                             </p>
                         </div>
 
