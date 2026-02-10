@@ -23,64 +23,49 @@ class BaseLLMProvider(ABC):
 
 
 class ExacodeLLMProvider(BaseLLMProvider):
-    """LGE EXACODE API Provider"""
+    """LGE EXACODE API Provider - Uses OpenAI client with custom headers"""
     
     def __init__(self, api_key: str, base_url: str = "http://exacode-chat.lge.com/v1", model: str = "Chat-EXACODE-A"):
-        self.api_key = api_key
-        self.base_url = base_url.rstrip('/')
+        from openai import AsyncOpenAI
+        
         self.model = model
-        self.headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json',
-            'X-Title': 'AI Automation Hub',
+        custom_headers = {
+            'X-Title': 'EXACODE SWE(API)',
             'X-Model': model
         }
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            http_client=httpx.AsyncClient(headers=custom_headers, timeout=120.0)
+        )
     
     async def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Send chat request to EXACODE"""
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "stream": False,
-                    **kwargs
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+        # Remove keys that OpenAI client doesn't accept
+        kwargs.pop('stream', None)
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=kwargs.pop('temperature', 0.2),
+            **kwargs
+        )
+        return response.choices[0].message.content or ""
     
     async def stream_chat(self, messages: List[Dict[str, str]], **kwargs) -> AsyncGenerator[str, None]:
         """Stream chat response from EXACODE"""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST",
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "stream": True,
-                    **kwargs
-                }
-            ) as response:
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(data_str)
-                            if "choices" in data and len(data["choices"]) > 0:
-                                delta = data["choices"][0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield content
-                        except json.JSONDecodeError:
-                            continue
+        kwargs.pop('stream', None)
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            temperature=kwargs.pop('temperature', 0.2),
+            **kwargs
+        )
+        async for chunk in response:
+            if chunk.choices and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
 
 
 class OllamaLLMProvider(BaseLLMProvider):

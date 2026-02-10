@@ -141,41 +141,49 @@ async def test_llm_connection(config: TestLLMRequest):
             base_url = (config.base_url or "http://exacode-chat.lge.com/v1").rstrip('/')
             model = config.model or "Chat-EXACODE-A"
             
-            # Test actual API call
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{base_url}/chat/completions",
-                    headers={
-                        'Authorization': f'Bearer {config.api_key}',
-                        'Content-Type': 'application/json',
-                        'X-Title': 'AI Automation Hub',
-                        'X-Model': model
-                    },
-                    json={
-                        "model": model,
-                        "messages": [{"role": "user", "content": "Hello"}],
-                        "stream": False
-                    }
+            # Test actual API call using OpenAI client (same as provider)
+            from openai import AsyncOpenAI
+            custom_headers = {
+                'X-Title': 'EXACODE SWE(API)',
+                'X-Model': model
+            }
+            test_client = AsyncOpenAI(
+                api_key=config.api_key,
+                base_url=base_url,
+                http_client=httpx.AsyncClient(headers=custom_headers, timeout=30.0)
+            )
+            
+            try:
+                response = await test_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "Hello"}],
+                    temperature=0.2
                 )
-                
-                if response.status_code == 200:
+                if response.choices and len(response.choices) > 0:
                     return {
                         "success": True,
                         "message": f"Connected! Model \"{model}\" is ready.",
                         "provider": "exacode"
                     }
-                elif response.status_code == 401:
+                else:
+                    return {
+                        "success": False,
+                        "error": "No response from model",
+                        "provider": "exacode"
+                    }
+            except Exception as api_error:
+                error_msg = str(api_error)
+                if "401" in error_msg:
                     return {
                         "success": False,
                         "error": "Invalid API key (401 Unauthorized)",
                         "provider": "exacode"
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"Connection failed: HTTP {response.status_code}",
-                        "provider": "exacode"
-                    }
+                return {
+                    "success": False,
+                    "error": f"Connection failed: {error_msg}",
+                    "provider": "exacode"
+                }
                     
         elif config.provider == "ollama":
             base_url = (config.base_url or "http://localhost:11434").rstrip('/')
