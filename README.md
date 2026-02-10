@@ -1,20 +1,30 @@
-# AI Automation Hub
+# AI Agent Hub
 
-AI-powered test automation platform for automotive embedded systems. Generate, review, and improve Robot Framework tests with AI assistance.
+AI-powered test automation platform for automotive embedded systems. Generate, review, and improve Robot Framework tests with AI assistance using LangChain agents.
 
 ## 🚀 Features
 
-- **AI Chat**: Interactive chat with AI about test automation
-- **Generate Test**: Generate Robot Framework tests for CAN, UART, DLT, HMI
+- **AI Chat**: Interactive chat with AI about test automation (powered by LangChain/LangGraph agents)
+- **Generate Test Script**: Generate Robot Framework tests for CAN, UART, DLT, HMI
 - **Review Test**: AI-powered code review and improvements
-- **Config**: Configure LLM (EXACODE/Ollama) and CodeBeamer
+- **Config**: Configure LLM providers (EXACODE/Ollama) and CodeBeamer integration
 - **About**: Quick start guide and documentation
 
-## 📋 Requirements
+## 📋 Tech Stack
 
-- Python 3.11+
-- Node.js 18+
-- (Optional) Ollama for local LLM
+### Backend
+- **Python 3.11+**
+- **FastAPI** - Web framework & REST API
+- **LangChain** + **LangGraph** - AI agent orchestration
+- **LangChain-OpenAI** - OpenAI-compatible LLM integration
+- **Pydantic** + **Pydantic-Settings** - Data validation & config management
+- **HTTPX** / **Requests** - HTTP clients
+- **Uvicorn** - ASGI server
+
+### Frontend
+- **React 18** - UI framework
+- **Vite 5** - Build tool & dev server
+- **Lucide React** - Icon library
 
 ## 🛠️ Installation
 
@@ -23,6 +33,11 @@ AI-powered test automation platform for automotive embedded systems. Generate, r
 ```bash
 cd backend
 pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env` and configure your settings:
+```bash
+cp .env.example .env
 ```
 
 ### Frontend
@@ -38,7 +53,7 @@ npm install
 
 ```bash
 cd backend
-uvicorn main:app --reload --port 8000
+python -m uvicorn main:app --reload --port 8000
 ```
 
 ### Start Frontend
@@ -71,26 +86,41 @@ Open http://localhost:5173 in your browser.
 ## 📁 Project Structure
 
 ```
-ai-automation-hub/
+AIAgent/
 ├── backend/
-│   ├── main.py              # FastAPI entry
-│   ├── config.py            # Configuration
-│   ├── routes/              # API endpoints
-│   └── services/            # Business logic
-│       ├── llm_service.py   # LLM abstraction
-│       ├── agent_service.py # LangChain agents
-│       ├── codebeamer_service.py
-│       ├── markdown_service.py
-│       └── test_generator.py
+│   ├── main.py                  # FastAPI entry point
+│   ├── config.py                # Pydantic settings management
+│   ├── .env.example             # Environment variables template
+│   ├── requirements.txt         # Python dependencies
+│   ├── routes/
+│   │   ├── __init__.py          # Router registration
+│   │   ├── chat.py              # Chat API endpoints
+│   │   ├── config.py            # Config API endpoints
+│   │   └── test_gen.py          # Test generation API endpoints
+│   └── services/
+│       ├── __init__.py          # Service exports
+│       ├── llm_service.py       # LLM provider abstraction
+│       ├── agent_service.py     # LangChain/LangGraph agents
+│       ├── codebeamer_service.py # CodeBeamer integration
+│       ├── markdown_service.py  # Markdown processing
+│       └── test_generator.py    # Robot Framework test generation
 ├── frontend/
-│   ├── src/
-│   │   ├── App.jsx          # Main app
-│   │   ├── index.css        # Design system
-│   │   └── components/      # Tab components
-│   └── package.json
+│   ├── index.html               # HTML entry point
+│   ├── package.json             # Node.js dependencies
+│   ├── vite.config.js           # Vite configuration
+│   └── src/
+│       ├── main.jsx             # React entry point
+│       ├── App.jsx              # Main app with sidebar navigation
+│       ├── index.css            # Design system & styling
+│       └── components/
+│           ├── ChatTab.jsx      # AI Chat interface
+│           ├── GenerateTab.jsx  # Test script generation
+│           ├── ReviewTab.jsx    # Code review interface
+│           ├── ConfigTab.jsx    # Settings & configuration
+│           └── AboutTab.jsx     # About & documentation
 └── README.md
 ```
 
 ## 📝 License
 
-MIT License - © 2026 AI Automation Hub
+MIT License - © 2026 AI Agent Hub
