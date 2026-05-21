@@ -1,108 +1,133 @@
-import { useState, useEffect } from 'react';
-import {
-    MessageSquare,
-    Wand2,
-    FileSearch,
-    Settings,
-    Info,
-    Sun,
-    Moon,
-    Sparkles
-} from 'lucide-react';
-import ChatTab from './components/ChatTab';
-import GenerateTab from './components/GenerateTab';
-import ReviewTab from './components/ReviewTab';
-import ConfigTab from './components/ConfigTab';
-import AboutTab from './components/AboutTab';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import Sidebar from './components/layout/Sidebar';
+import TopBar from './components/layout/TopBar';
+import ChatTab from './components/chat/ChatTab';
+import TestPipelineTab from './components/pipeline/TestPipelineTab';
+import RagTab from './components/rag/RagTab';
+import ConfigTab from './components/config/ConfigTab';
+import AboutTab from './components/about/AboutTab';
 
-const TABS = [
-    { id: 'chat', name: 'AI Chat', icon: MessageSquare },
-    { id: 'generate', name: 'Generate Test Script', icon: Wand2 },
-    { id: 'review', name: 'Review Test', icon: FileSearch },
-    { id: 'config', name: 'Config', icon: Settings },
-    { id: 'about', name: 'About', icon: Info },
-];
+/* ─── Toast Context ─────────────────────────────────────────────── */
+const ToastContext = createContext(null);
 
+export function useToast() {
+  return useContext(ToastContext);
+}
+
+function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+
+  const addToast = useCallback((message, type = 'info') => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  return (
+    <ToastContext.Provider value={addToast}>
+      {children}
+      <div className="toast-container">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast-${t.type}`}>
+            {t.type === 'success' && <span>✓</span>}
+            {t.type === 'error' && <span>✕</span>}
+            {t.type === 'info' && <span>ℹ</span>}
+            <span>{t.message}</span>
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+
+/* ─── Placeholder Components ───────────────────────────────────── */
+function DashboardTab() {
+  return (
+    <div style={{padding: '40px', textAlign: 'center', color: 'var(--text-secondary)'}}>
+      <h2 style={{color: 'var(--text-primary)', marginBottom: '12px'}}>📊 Usage Dashboard</h2>
+      <p>Coming soon — Sprint 3</p>
+      <p style={{marginTop: '8px', fontSize: '0.85rem'}}>Track requests, tokens, costs, and user activity.</p>
+    </div>
+  );
+}
+
+function PromptLibraryTab() {
+  return (
+    <div style={{padding: '40px', textAlign: 'center', color: 'var(--text-secondary)'}}>
+      <h2 style={{color: 'var(--text-primary)', marginBottom: '12px'}}>📝 Prompt Library</h2>
+      <p>Coming soon — Sprint 2</p>
+      <p style={{marginTop: '8px', fontSize: '0.85rem'}}>Create and manage reusable prompt templates for test generation.</p>
+    </div>
+  );
+}
+
+/* ─── Tab Map ───────────────────────────────────────────────────── */
+const TABS = {
+  chat: ChatTab,
+  pipeline: TestPipelineTab,
+  rag: RagTab,
+  dashboard: DashboardTab,
+  prompts: PromptLibraryTab,
+  config: ConfigTab,
+  about: AboutTab,
+};
+
+const TAB_TITLES = {
+  chat: 'Knowledge Search',
+  pipeline: 'Test Pipeline',
+  rag: 'RAG Knowledge Base',
+  dashboard: 'Usage Dashboard',
+  prompts: 'Prompt Library',
+  config: 'Configuration',
+  about: 'About',
+};
+
+/* ─── App Component ─────────────────────────────────────────────── */
 function App() {
-    const [activeTab, setActiveTab] = useState('chat');
-    const [theme, setTheme] = useState(() => {
-        const saved = localStorage.getItem('theme');
-        return saved || 'dark';
-    });
+  const [activeTab, setActiveTab] = useState('chat');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [model, setModel] = useState('ollama-gemma4');
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
-    useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-    }, [theme]);
+  // Apply theme to root element
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
-    const toggleTheme = () => {
-        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-    };
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
+  const ActiveComponent = TABS[activeTab];
 
-
-    return (
-        <div className="app-container">
-            {/* Sidebar Navigation - Left Side */}
-            <aside className="sidebar">
-                <div className="sidebar-header">
-                    <div className="sidebar-logo">
-                        <div className="sidebar-logo-icon">
-                            <Sparkles size={22} />
-                        </div>
-                        <div>
-                            <div className="sidebar-logo-text">AI Agent Hub</div>
-                            <div className="sidebar-logo-subtitle">Automation Validation Team</div>
-                        </div>
-                    </div>
-                </div>
-
-                <nav className="sidebar-nav">
-                    {TABS.map(tab => {
-                        const Icon = tab.icon;
-                        return (
-                            <button
-                                key={tab.id}
-                                className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
-                                onClick={() => setActiveTab(tab.id)}
-                            >
-                                <Icon className="nav-item-icon" size={20} />
-                                <span>{tab.name}</span>
-                            </button>
-                        );
-                    })}
-                </nav>
-
-                <div className="sidebar-footer">
-                    <button className="theme-toggle" onClick={toggleTheme}>
-                        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                        <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-                    </button>
-                </div>
-            </aside>
-
-            {/* Main Content Area - All tabs mounted, only active one visible */}
-            <main className="main-content">
-                <div className="content-wrapper">
-                    <div style={{ display: activeTab === 'chat' ? 'block' : 'none', height: '100%' }}>
-                        <ChatTab />
-                    </div>
-                    <div style={{ display: activeTab === 'generate' ? 'block' : 'none', height: '100%' }}>
-                        <GenerateTab />
-                    </div>
-                    <div style={{ display: activeTab === 'review' ? 'block' : 'none', height: '100%' }}>
-                        <ReviewTab />
-                    </div>
-                    <div style={{ display: activeTab === 'config' ? 'block' : 'none', height: '100%' }}>
-                        <ConfigTab />
-                    </div>
-                    <div style={{ display: activeTab === 'about' ? 'block' : 'none', height: '100%' }}>
-                        <AboutTab />
-                    </div>
-                </div>
-            </main>
+  return (
+    <ToastProvider>
+      <div className="app-layout">
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((c) => !c)}
+        />
+        <div
+          className="main-wrapper"
+          style={{ marginLeft: sidebarCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)' }}
+        >
+          <TopBar
+            title={TAB_TITLES[activeTab]}
+            model={model}
+            onModelChange={setModel}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+          <div className={activeTab === 'chat' || activeTab === 'pipeline' ? '' : 'main-content'}>
+            <ActiveComponent model={model} />
+          </div>
         </div>
-    );
+      </div>
+    </ToastProvider>
+  );
 }
 
 export default App;

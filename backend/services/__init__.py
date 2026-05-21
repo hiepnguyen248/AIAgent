@@ -6,6 +6,8 @@ from services.agent_service import agent_service, AgentService
 from services.codebeamer_service import get_codebeamer_service, configure_codebeamer, CodeBeamerService
 from services.markdown_service import markdown_service, MarkdownService
 from services.test_generator import test_generator, TestGeneratorService
+from services.rag_service import get_rag_service, configure_rag, RAGService
+from services.quality_service import quality_service, QualityService
 
 __all__ = [
     'llm_service',
@@ -18,5 +20,10 @@ __all__ = [
     'markdown_service',
     'MarkdownService',
     'test_generator',
-    'TestGeneratorService'
+    'TestGeneratorService',
+    'get_rag_service',
+    'configure_rag',
+    'RAGService',
+    'quality_service',
+    'QualityService',
 ]

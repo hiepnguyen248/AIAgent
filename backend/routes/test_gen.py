@@ -62,23 +62,33 @@ def configure_llm_for_model(model_id: str):
             )
         except Exception as e:
             raise ValueError(f"EXACODE not configured: {str(e)}")
-    elif model_id == 'ollama-llama3':
+    elif model_id == 'ollama-gemma4':
+        from config import settings
         llm_service.configure(
             provider="ollama",
-            base_url="http://localhost:11434",
+            base_url=settings.ollama_base_url,
+            model="gemma4:latest"
+        )
+    elif model_id == 'ollama-llama3':
+        from config import settings
+        llm_service.configure(
+            provider="ollama",
+            base_url=settings.ollama_base_url,
             model="llama3:8b"
         )
     elif model_id == 'ollama-qwen3':
+        from config import settings
         llm_service.configure(
             provider="ollama",
-            base_url="http://localhost:11434",
+            base_url=settings.ollama_base_url,
             model="qwen3:8b"
         )
     else:
+        from config import settings
         llm_service.configure(
             provider="ollama",
-            base_url="http://localhost:11434",
-            model="llama3:8b"
+            base_url=settings.ollama_base_url,
+            model="gemma4:latest"
         )
 
 
@@ -399,4 +409,141 @@ async def save_test_file(request: SaveFileRequest):
         raise HTTPException(status_code=403, detail=f"Permission denied: Cannot write to {request.folder_path}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class GenerateFromCBRequest(BaseModel):
+    item_id: int
+    test_type: str = "generic"
+    model: Optional[str] = "ollama-gemma4"
+    use_rag: bool = True
+    auto_retry: bool = True
+
+
+@router.post("/generate-from-codebeamer")
+async def generate_from_codebeamer(request: GenerateFromCBRequest):
+    """Full pipeline: Fetch TC from CodeBeamer → RAG context → AI Generate → Validate"""
+    from services.quality_service import quality_service
+    
+    # Step 1: Configure LLM
+    model_id = request.model or 'ollama-gemma4'
+    try:
+        configure_llm_for_model(model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Step 2: Fetch test case from CodeBeamer
+    service = get_codebeamer_service()
+    if not service:
+        raise HTTPException(status_code=400, detail="CodeBeamer not configured")
+    
+    item = service.get_item_safe(request.item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Test case {request.item_id} not found")
+    
+    # Format TC data
+    tc_context = agent_service._format_item_as_context(item)
+    
+    # Step 3: Get RAG context (relevant keywords & resources)
+    rag_context = ""
+    if request.use_rag:
+        try:
+            from services.rag_service import get_rag_service
+            rag = get_rag_service()
+            if rag:
+                tc_name = item.get('name', '')
+                tc_desc = item.get('description', '')
+                search_query = f"{tc_name} {tc_desc}"[:500]
+                rag_context = rag.search_formatted(search_query, top_k=10)
+        except Exception as e:
+            print(f"[Generate] RAG lookup error: {e}")
+    
+    # Step 4: Build enhanced context and generate
+    context = f"""
+Test Type: {request.test_type}
+
+--- CodeBeamer Test Case ---
+{tc_context}
+
+{rag_context}
+
+IMPORTANT: Use ONLY the keywords and resources found in the RAG context above.
+Generate a complete, executable Robot Framework test script (.robot file).
+Output ONLY the Robot Framework code, no markdown fences.
+"""
+    
+    try:
+        test_code = await agent_service.generate_test(
+            test_case_description=f"Generate Robot Framework test for: {item.get('name', 'Unknown')}",
+            test_type=request.test_type,
+            additional_context=context
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+    
+    # Clean up: remove markdown code fences if present
+    test_code = test_code.strip()
+    if test_code.startswith("```"):
+        lines = test_code.split('\n')
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        test_code = '\n'.join(lines)
+    
+    # Step 5: Validate quality
+    quality_report = await quality_service.validate_with_rag(test_code)
+    
+    # Step 6: Auto-retry if quality is low and auto_retry is enabled
+    if request.auto_retry and quality_report.score < 60 and quality_report.issues:
+        error_feedback = "\n".join([
+            f"- [{i.level.upper()}] {i.message}" + (f" (suggestion: {i.suggestion})" if i.suggestion else "")
+            for i in quality_report.issues[:10]
+        ])
+        
+        retry_context = f"""
+The previously generated script had quality issues (score: {quality_report.score}/100):
+{error_feedback}
+
+Please fix these issues and regenerate. {context}
+"""
+        try:
+            test_code = await agent_service.generate_test(
+                test_case_description=f"Fix and regenerate Robot Framework test for: {item.get('name', '')}",
+                test_type=request.test_type,
+                additional_context=retry_context
+            )
+            # Clean up again
+            test_code = test_code.strip()
+            if test_code.startswith("```"):
+                lines = test_code.split('\n')
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                test_code = '\n'.join(lines)
+            
+            quality_report = await quality_service.validate_with_rag(test_code)
+        except Exception:
+            pass  # Use first attempt if retry fails
+    
+    return {
+        "test_code": test_code,
+        "quality": quality_report.to_dict(),
+        "codebeamer_item": {
+            "id": item.get("id"),
+            "name": item.get("name", ""),
+            "status": item.get("status", {}).get("name", ""),
+        },
+        "model": model_id,
+        "used_rag": request.use_rag,
+    }
+
+
+@router.post("/quality-check")
+async def quality_check(request: ReviewTestRequest):
+    """Run quality validation on test code"""
+    from services.quality_service import quality_service
+    
+    report = await quality_service.validate_with_rag(request.test_code)
+    return report.to_dict()
 

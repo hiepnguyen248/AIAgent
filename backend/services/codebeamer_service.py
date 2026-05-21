@@ -1,10 +1,12 @@
 """
 CodeBeamer Service - Integration with CodeBeamer using username/password auth
 """
+import asyncio
 import base64
 import time
 import hashlib
 import json
+import re
 import requests
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -81,14 +83,15 @@ class CodeBeamerService:
         )
     
     def _rate_limit_wait(self):
-        """Wait if rate limit would be exceeded"""
+        """Wait if rate limit would be exceeded (non-blocking when used via asyncio.to_thread)"""
         now = time.time()
         self.call_timestamps = [ts for ts in self.call_timestamps if now - ts < 60]
         
         if len(self.call_timestamps) >= self.max_calls:
             wait_time = 60 - (now - self.call_timestamps[0]) + 0.1
             if wait_time > 0:
-                time.sleep(wait_time)
+                import time as _time
+                _time.sleep(wait_time)
                 self.call_timestamps = []
         
         self.call_timestamps.append(now)
@@ -165,18 +168,10 @@ class CodeBeamerService:
         """List all projects"""
         result = self._make_request(
             method='GET',
-            endpoint=f'/rest/projects/page/{page}',
-            params={'pageSize': min(page_size, 500)},
+            endpoint=f'/api/v3/projects',
+            params={'page': page, 'pageSize': min(page_size, 500)},
             cache_ttl=600
         )
-        
-        if isinstance(result, dict) and result.get('error'):
-            result = self._make_request(
-                method='GET',
-                endpoint='/v3/projects',
-                params={'page': page, 'pageSize': min(page_size, 500)},
-                cache_ttl=600
-            )
         
         return result
     
@@ -184,7 +179,7 @@ class CodeBeamerService:
         """Get all items in a tracker"""
         return self._make_request(
             method='GET',
-            endpoint=f'/v3/trackers/{tracker_id}/items',
+            endpoint=f'/api/v3/trackers/{tracker_id}/items',
             params={'pageSize': max_items}
         )
     
@@ -192,8 +187,15 @@ class CodeBeamerService:
         """Get single item details"""
         return self._make_request(
             method='GET',
-            endpoint=f'/v3/items/{item_id}'
+            endpoint=f'/api/v3/items/{item_id}'
         )
+    
+    def get_item_safe(self, item_id: int) -> Optional[Dict[str, Any]]:
+        """Get single item details, returns None on error"""
+        result = self.get_item(item_id)
+        if isinstance(result, dict) and result.get('error'):
+            return None
+        return result
     
     def get_test_cases(self, tracker_id: int) -> List[Dict[str, Any]]:
         """Get test cases from a tracker"""
@@ -224,7 +226,7 @@ class CodeBeamerService:
         
         return self._make_request(
             method='POST',
-            endpoint='/v3/items/query',
+            endpoint='/api/v3/items/query',
             body={
                 'queryString': cbql,
                 'page': 1,
@@ -246,6 +248,65 @@ class CodeBeamerService:
     def clear_cache(self):
         """Clear all cache"""
         self.cache.clear()
+    
+    def search_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Search for an item by name pattern (e.g., TC-001, TCID-123).
+        Uses CbQL query to find items matching the name.
+        Returns the first matching item's full details, or None.
+        """
+        # Try direct numeric ID extraction first
+        numeric_match = re.search(r'(\d+)', name)
+        if numeric_match:
+            item_id = int(numeric_match.group(1))
+            # Try direct item lookup first (fastest path)
+            result = self.get_item_safe(item_id)
+            if result:
+                return result
+        
+        # Fallback: search by name using CbQL
+        try:
+            search_result = self._make_request(
+                method='POST',
+                endpoint='/api/v3/items/query',
+                body={
+                    'queryString': f"summary LIKE '%{name}%'",
+                    'page': 1,
+                    'pageSize': 5
+                },
+                use_cache=True
+            )
+            
+            if isinstance(search_result, dict) and not search_result.get('error'):
+                items = search_result.get('items', search_result.get('itemRefs', []))
+                if items:
+                    # Get full details of first match
+                    first_item = items[0]
+                    item_id = first_item.get('id')
+                    if item_id:
+                        return self.get_item_safe(item_id) or first_item
+                    return first_item
+        except Exception as e:
+            print(f"[CodeBeamer] search_by_name error: {e}")
+        
+        return None
+    
+    # === Async wrappers (run sync calls in thread executor) ===
+    
+    async def get_item_async(self, item_id: int) -> Optional[Dict[str, Any]]:
+        """Async wrapper for get_item_safe - runs in thread to avoid blocking event loop"""
+        return await asyncio.to_thread(self.get_item_safe, item_id)
+    
+    async def search_by_name_async(self, name: str) -> Optional[Dict[str, Any]]:
+        """Async wrapper for search_by_name"""
+        return await asyncio.to_thread(self.search_by_name, name)
+    
+    async def list_projects_async(self, page: int = 1, page_size: int = 100) -> Dict[str, Any]:
+        """Async wrapper for list_projects"""
+        return await asyncio.to_thread(self.list_projects, page, page_size)
+    
+    async def get_tracker_items_async(self, tracker_id: int, max_items: int = 500) -> Dict[str, Any]:
+        """Async wrapper for get_tracker_items"""
+        return await asyncio.to_thread(self.get_tracker_items, tracker_id, max_items)
 
 
 # Global service instance

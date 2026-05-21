@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     debug: bool = False
     
     # LLM Provider Settings
-    llm_provider: Literal["exacode", "ollama"] = "exacode"
+    llm_provider: Literal["exacode", "ollama", "gemma4"] = "ollama"
     
     # LGE EXACODE Settings
     exacode_api_key: str = ""
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     
     # Ollama Settings
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3:8b"  # or qwen3:8b
+    ollama_model: str = "gemma4:latest"  # gemma4:latest, llama3:8b, qwen3:8b
     
     # CodeBeamer Settings
     codebeamer_url: str = ""
@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     codebeamer_password: str = ""
     codebeamer_ssl_verify: bool = True
     
+    # RAG Settings
+    rag_persist_dir: str = "./rag_data"
+    rag_chunk_size: int = 1000
+    rag_chunk_overlap: int = 200
+    rag_top_k: int = 5
+    rag_embedding_provider: str = "ollama"  # "ollama" or "sentence-transformers"
+    rag_embedding_model: str = "qwen3-embedding"
+    rag_ollama_base_url: str = "http://localhost:11434"
+    
+    # MongoDB Settings
+    mongo_uri: str = "mongodb://localhost:27017/"
+    mongo_db: str = "ai_automation_hub"
+
     # Rate Limiting
     max_calls_per_minute: int = 60
     cache_ttl: int = 300

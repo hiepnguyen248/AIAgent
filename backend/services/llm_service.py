@@ -38,14 +38,61 @@ class ExacodeLLMProvider(BaseLLMProvider):
             base_url=base_url,
             http_client=httpx.AsyncClient(headers=custom_headers, timeout=120.0)
         )
-    
+
+    @staticmethod
+    def _normalize_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Merge system prompt into the first user message so the EXACODE backend
+        (LiteLLM → qwen3.5:35b) never receives a 'system' role message.
+
+        LiteLLM's Qwen chat-template handler re-inserts the system content at
+        the wrong position when there is existing conversation history, which
+        causes:  "System message must be at the beginning."
+
+        Transforming:
+          [system, user1, assistant1, user2]
+        Into:
+          [user("[System]\n...\n\n[User]\nuser1"), assistant1, user2]
+        """
+        if not messages:
+            return messages
+
+        msgs = [dict(m) for m in messages]  # shallow copy each dict
+
+        # Collect and remove all system messages
+        system_parts = []
+        non_system = []
+        for m in msgs:
+            if m["role"] == "system":
+                system_parts.append(m["content"])
+            else:
+                non_system.append(m)
+
+        if not system_parts:
+            return non_system
+
+        system_text = "\n\n".join(system_parts)
+
+        # Prepend to the first user message, or insert a standalone user message
+        if non_system and non_system[0]["role"] == "user":
+            non_system[0]["content"] = (
+                f"[System Instructions]\n{system_text}\n\n"
+                f"[User]\n{non_system[0]['content']}"
+            )
+        else:
+            non_system.insert(0, {
+                "role": "user",
+                "content": f"[System Instructions]\n{system_text}"
+            })
+
+        return non_system
+
     async def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Send chat request to EXACODE"""
-        # Remove keys that OpenAI client doesn't accept
         kwargs.pop('stream', None)
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=self._normalize_messages(messages),
             temperature=kwargs.pop('temperature', 0.2),
             **kwargs
         )
@@ -56,7 +103,7 @@ class ExacodeLLMProvider(BaseLLMProvider):
         kwargs.pop('stream', None)
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=self._normalize_messages(messages),
             stream=True,
             temperature=kwargs.pop('temperature', 0.2),
             **kwargs

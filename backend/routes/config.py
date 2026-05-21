@@ -34,12 +34,20 @@ class ConfigResponse(BaseModel):
 
 @router.get("/current")
 async def get_current_config():
-    """Get current configuration (without sensitive data)"""
+    """Get current configuration including credentials for form pre-fill"""
     settings = get_settings()
+    
+    # Mask API key: show last 4 chars only
+    masked_api_key = ""
+    if settings.exacode_api_key:
+        key = settings.exacode_api_key
+        masked_api_key = "*" * max(0, len(key) - 4) + key[-4:] if len(key) > 4 else key
+    
     return {
         "llm": {
             "provider": settings.llm_provider,
             "exacode": {
+                "api_key": settings.exacode_api_key,
                 "base_url": settings.exacode_base_url,
                 "model": settings.exacode_model,
                 "configured": bool(settings.exacode_api_key)
@@ -51,6 +59,8 @@ async def get_current_config():
         },
         "codebeamer": {
             "url": settings.codebeamer_url,
+            "username": settings.codebeamer_username,
+            "password": settings.codebeamer_password,
             "configured": bool(settings.codebeamer_username and settings.codebeamer_password),
             "ssl_verify": settings.codebeamer_ssl_verify
         }
