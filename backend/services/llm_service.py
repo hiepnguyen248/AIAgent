@@ -3,9 +3,14 @@ LLM Service - Abstraction layer for multiple LLM providers
 Supports: LGE EXACODE API, Ollama (Llama3:8B, Qwen3:8B)
 """
 import httpx
-from typing import AsyncGenerator, List, Dict, Any, Optional
+import json
+from typing import AsyncGenerator, List, Dict, Any, Optional, Type, TypeVar
 from abc import ABC, abstractmethod
 import json
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
+
 
 
 class BaseLLMProvider(ABC):
@@ -207,6 +212,60 @@ class LLMService:
         """Stream chat response"""
         async for chunk in self.provider.stream_chat(messages, **kwargs):
             yield chunk
+
+    async def chat_structured(
+        self,
+        messages: List[Dict[str, str]],
+        response_model: Type[T],
+        **kwargs,
+    ) -> T:
+        """
+        Send a chat request and parse the response into a Pydantic model.
+        Uses the `instructor` library when available (OpenAI-compatible providers),
+        otherwise falls back to JSON-mode + manual Pydantic parsing.
+        """
+        # ── instructor path (ExacodeLLMProvider) ──────────────────────────────
+        if isinstance(self._provider, ExacodeLLMProvider):
+            try:
+                import instructor
+
+                patched = instructor.from_openai(self._provider.client)
+                result = await patched.chat.completions.create(
+                    model=self._provider.model,
+                    messages=self._provider._normalize_messages(messages),
+                    response_model=response_model,
+                    temperature=kwargs.pop("temperature", 0.2),
+                    **kwargs,
+                )
+                return result
+            except ImportError:
+                pass  # fall through to JSON mode
+            except Exception as e:
+                print(f"[LLM] instructor structured call failed: {e}, falling back to JSON mode")
+
+        # ── JSON fallback path ────────────────────────────────────────────────
+        schema_json = response_model.model_json_schema()
+        schema_str = json.dumps(schema_json, indent=2)
+
+        json_messages = list(messages)
+        json_messages.append({
+            "role": "user",
+            "content": (
+                f"Respond ONLY with a valid JSON object that conforms to this schema:\n"
+                f"```json\n{schema_str}\n```\n"
+                "Do not add any text outside the JSON object."
+            ),
+        })
+
+        raw = await self.provider.chat(json_messages, **kwargs)
+
+        # Strip markdown fences if present
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+        parsed = json.loads(raw)
+        return response_model.model_validate(parsed)
 
 
 # Singleton instance

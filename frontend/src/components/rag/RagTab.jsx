@@ -1,12 +1,40 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  BookOpen, Upload, Search, Trash2, FolderOpen, FileText,
-  Database, HardDrive, Cpu, RefreshCw, X, AlertCircle,
+  BookOpen,
+  Bot,
+  Code2,
+  Cpu,
+  Database,
+  FileJson,
+  FileText,
+  Globe,
+  HardDrive,
+  RefreshCw,
+  Search,
+  Trash2,
+  Upload,
+  X,
 } from 'lucide-react';
-import { uploadRagFile, indexPaths, searchRag, getRagDocuments, deleteRagDocument, getRagStats, clearRagData } from '../../utils/api';
+import {
+  clearRagData,
+  deleteRagDocument,
+  getRagDocuments,
+  getRagStats,
+  indexPaths,
+  searchRag,
+  uploadRagFile,
+} from '../../utils/api';
 import { useToast } from '../../App';
 
 const SUPPORTED_FORMATS = ['.robot', '.py', '.md', '.txt', '.pdf', '.json', '.html'];
+
+function fileIconFor(name) {
+  if (name?.endsWith('.robot')) return Bot;
+  if (name?.endsWith('.py')) return Code2;
+  if (name?.endsWith('.json')) return FileJson;
+  if (name?.endsWith('.html')) return Globe;
+  return FileText;
+}
 
 export default function RagTab() {
   const [documents, setDocuments] = useState([]);
@@ -27,7 +55,7 @@ export default function RagTab() {
       setDocuments(Array.isArray(docs) ? docs : docs.documents || []);
       setStats(st);
     } catch {
-      // Backend might not be running
+      // Backend may not be running yet.
     }
   }, []);
 
@@ -63,7 +91,7 @@ export default function RagTab() {
     setIndexing(true);
     try {
       await indexPaths({ paths: [folderPath.trim()] });
-      toast('Folder indexed successfully!', 'success');
+      toast('Folder indexed successfully', 'success');
       setFolderPath('');
       loadData();
     } catch (err) {
@@ -108,41 +136,27 @@ export default function RagTab() {
     }
   };
 
-  const getFileIcon = (name) => {
-    if (name?.endsWith('.robot')) return '🤖';
-    if (name?.endsWith('.py')) return '🐍';
-    if (name?.endsWith('.md')) return '📝';
-    if (name?.endsWith('.pdf')) return '📕';
-    if (name?.endsWith('.json')) return '📋';
-    if (name?.endsWith('.html')) return '🌐';
-    return '📄';
-  };
-
   return (
     <div className="rag-layout">
-      {/* ─── Stats ─────────────────────────────────────────────── */}
       {stats && (
         <div className="rag-full-width">
           <div className="stats-grid">
             <div className="stat-card">
               <div className="stat-value">{stats.total_documents ?? stats.document_count ?? 0}</div>
-              <div className="stat-label"><FileText size={12} style={{ display: 'inline' }} /> Documents</div>
+              <div className="stat-label"><FileText size={13} /> Documents</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{stats.total_chunks ?? stats.chunk_count ?? 0}</div>
-              <div className="stat-label"><Database size={12} style={{ display: 'inline' }} /> Chunks</div>
+              <div className="stat-label"><Database size={13} /> Chunks</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value" style={{ fontSize: '0.95rem', wordBreak: 'break-all' }}>
-                {stats.embedding_model || stats.model || 'N/A'}
-              </div>
-              <div className="stat-label"><Cpu size={12} style={{ display: 'inline' }} /> Embedding Model</div>
+              <div className="stat-value stat-value-text">{stats.embedding_model || stats.model || 'N/A'}</div>
+              <div className="stat-label"><Cpu size={13} /> Embedding model</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Upload Section ────────────────────────────────────── */}
       <div className="card">
         <div className="card-header">
           <div className="card-title"><Upload /> Upload Files</div>
@@ -164,36 +178,33 @@ export default function RagTab() {
           />
           {uploading ? (
             <>
-              <div className="spinner spinner-lg" style={{ margin: '0 auto 12px' }} />
+              <div className="spinner spinner-lg" />
               <h3>Uploading...</h3>
             </>
           ) : (
             <>
-              <Upload size={32} />
+              <Upload size={30} />
               <h3>Drop files here or click to upload</h3>
-              <p>Upload documents to the knowledge base</p>
+              <p>Upload documents to the knowledge base.</p>
             </>
           )}
           <div className="formats-badge">
-            {SUPPORTED_FORMATS.map((f) => (
-              <span key={f} className="badge badge-accent">{f}</span>
+            {SUPPORTED_FORMATS.map((format) => (
+              <span key={format} className="badge badge-accent">{format}</span>
             ))}
           </div>
         </div>
 
-        {/* Index Folder */}
-        <div style={{ marginTop: 16 }}>
-          <div className="card-title" style={{ marginBottom: 8, fontSize: '0.9rem' }}>
-            <FolderOpen size={14} /> Index Folder
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div className="section-block">
+          <div className="card-title small"><HardDrive /> Index Folder</div>
+          <div className="inline-form">
             <input
               className="input"
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               placeholder="Enter folder path to index..."
             />
-            <button className="btn btn-secondary" onClick={handleIndexFolder} disabled={!folderPath.trim() || indexing}>
+            <button className="btn btn-secondary" onClick={handleIndexFolder} disabled={!folderPath.trim() || indexing} type="button">
               {indexing ? <div className="spinner" /> : <HardDrive size={14} />}
               Index
             </button>
@@ -201,13 +212,12 @@ export default function RagTab() {
         </div>
       </div>
 
-      {/* ─── Search Section ────────────────────────────────────── */}
       <div className="card">
         <div className="card-header">
           <div className="card-title"><Search /> Search Knowledge Base</div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div className="inline-form search-form">
           <input
             className="input"
             value={searchQuery}
@@ -215,76 +225,76 @@ export default function RagTab() {
             placeholder="Search documents..."
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          <button className="btn btn-primary" onClick={handleSearch} disabled={!searchQuery.trim() || searching}>
-            {searching ? <div className="spinner" style={{ borderTopColor: 'white' }} /> : <Search size={14} />}
+          <button className="btn btn-primary" onClick={handleSearch} disabled={!searchQuery.trim() || searching} type="button">
+            {searching ? <div className="spinner" /> : <Search size={14} />}
             Search
           </button>
         </div>
 
-        <div className="search-results" style={{ maxHeight: 400, overflowY: 'auto' }}>
+        <div className="search-results">
           {searchResults.length > 0 ? (
-            searchResults.map((r, i) => (
+            searchResults.map((result, i) => (
               <div key={i} className="search-result-item">
-                <div>{r.content || r.text || r.chunk || ''}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                  <span className="source">{r.source || r.metadata?.source || 'Unknown source'}</span>
-                  {r.score !== undefined && (
-                    <span className="score">Score: {(r.score * 100).toFixed(1)}%</span>
+                <div>{result.content || result.text || result.chunk || ''}</div>
+                <div className="result-meta">
+                  <span className="source">{result.source || result.metadata?.source || 'Unknown source'}</span>
+                  {result.score !== undefined && (
+                    <span className="score">Score: {(result.score * 100).toFixed(1)}%</span>
                   )}
                 </div>
               </div>
             ))
           ) : (
-            <div className="empty-state" style={{ padding: 24 }}>
-              <Search size={32} />
-              <p>Search results will appear here</p>
+            <div className="empty-state compact">
+              <Search size={30} />
+              <p>Search results will appear here.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* ─── Documents List ────────────────────────────────────── */}
       <div className="card rag-full-width">
         <div className="card-header">
           <div className="card-title">
             <BookOpen /> Indexed Documents
             <span className="badge badge-primary">{documents.length}</span>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost btn-sm" onClick={loadData}>
+          <div className="toolbar">
+            <button className="btn btn-ghost btn-sm" onClick={loadData} type="button">
               <RefreshCw size={14} /> Refresh
             </button>
             {documents.length > 0 && (
-              <button className="btn btn-danger btn-sm" onClick={handleClearAll}>
+              <button className="btn btn-danger btn-sm" onClick={handleClearAll} type="button">
                 <Trash2 size={14} /> Clear All
               </button>
             )}
           </div>
         </div>
 
-        <div className="document-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
+        <div className="document-list">
           {documents.length > 0 ? (
             documents.map((doc, i) => {
               const name = typeof doc === 'string' ? doc : (doc.source_name || doc.name || doc.source || `Document ${i + 1}`);
               const chunks = typeof doc === 'object' ? (doc.chunk_count || doc.chunks || '') : '';
               const ext = name.split('.').pop();
+              const Icon = fileIconFor(name);
               return (
                 <div key={i} className="document-item">
                   <div className="document-info">
-                    <span style={{ fontSize: '1.2rem' }}>{getFileIcon(name)}</span>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.88rem' }}>{name}</span>
+                    <Icon size={17} />
+                    <span>{name}</span>
                     {ext && <span className="badge badge-accent">.{ext}</span>}
                     {chunks && <span className="badge badge-primary">{chunks} chunks</span>}
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleDeleteDoc(name)}>
+                  <button className="icon-btn small" onClick={() => handleDeleteDoc(name)} type="button" title="Delete">
                     <X size={14} />
                   </button>
                 </div>
               );
             })
           ) : (
-            <div className="empty-state" style={{ padding: 24 }}>
-              <BookOpen size={32} />
+            <div className="empty-state compact">
+              <BookOpen size={30} />
               <p>No documents indexed yet. Upload files or index a folder to get started.</p>
             </div>
           )}

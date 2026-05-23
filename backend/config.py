@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Rate Limiting
     max_calls_per_minute: int = 60
     cache_ttl: int = 300
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -459,9 +459,10 @@ class AgentService:
                 from services.rag_service import get_rag_service
                 rag = get_rag_service()
                 if rag:
-                    rag_context = await rag.search_formatted_async(user_message, top_k=5)
+                    # Use hybrid search (vector + BM25) for better recall
+                    rag_context = await rag.search_formatted_hybrid_async(user_message, top_k=5, alpha=0.7)
                     if rag_context:
-                        print(f"[RAG] Injecting context ({len(rag_context)} chars) for agent: {agent_type}")
+                        print(f"[RAG] Injecting hybrid context ({len(rag_context)} chars) for agent: {agent_type}")
                         system_prompt += f"\n\n{rag_context}\n\nUse the above knowledge base information to help answer the user's question when relevant."
             except Exception as e:
                 print(f"[RAG] Context fetch error: {e}")

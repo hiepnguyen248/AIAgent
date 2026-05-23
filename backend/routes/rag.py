@@ -19,6 +19,13 @@ class SearchRequest(BaseModel):
     filter_type: Optional[str] = None
 
 
+class HybridSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+    filter_type: Optional[str] = None
+    alpha: float = 0.7  # 0.0 = pure BM25, 1.0 = pure vector
+
+
 class IndexTestCaseRequest(BaseModel):
     tc_id: str
     tc_data: dict
@@ -127,6 +134,39 @@ async def search(request: SearchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/search-hybrid")
+async def search_hybrid(request: HybridSearchRequest):
+    """Hybrid search (vector + BM25 keyword) with configurable alpha weighting.
+    alpha=0.7 (default): 70% semantic + 30% keyword
+    alpha=1.0: pure vector/semantic
+    alpha=0.0: pure BM25 keyword
+    """
+    rag = get_rag_service()
+    if not rag:
+        raise HTTPException(status_code=503, detail="RAG service not initialized")
+
+    try:
+        results = await rag.search_hybrid_async(
+            request.query, request.top_k, request.filter_type, request.alpha
+        )
+        return {
+            "query": request.query,
+            "alpha": request.alpha,
+            "search_type": "hybrid",
+            "results": [
+                {
+                    "content": r.content,
+                    "metadata": r.metadata,
+                    "hybrid_score": r.metadata.get("hybrid_score", 0.0),
+                    "score": round(1 - r.score, 4) if r.score < 1 else 0,
+                }
+                for r in results
+            ],
+            "count": len(results),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/documents")
 async def list_documents():

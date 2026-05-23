@@ -12,8 +12,9 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
+import math
 
 import httpx
 
@@ -907,8 +908,165 @@ class RAGService:
         return "\n".join(parts)
 
     # ========================
-    # Document Management
+    # Hybrid Search (BM25 + Vector)
     # ========================
+
+    @staticmethod
+    def _bm25_score(
+        query_terms: List[str],
+        document: str,
+        corpus_size: int,
+        doc_freq: Dict[str, int],
+        k1: float = 1.5,
+        b: float = 0.75,
+        avg_doc_len: float = 500.0,
+    ) -> float:
+        """
+        Compute BM25 relevance score for a single document.
+        corpus_size  – total number of documents in the corpus
+        doc_freq     – mapping term → number of docs containing that term
+        """
+        doc_len = len(document.split())
+        score = 0.0
+        for term in query_terms:
+            tf = document.lower().count(term.lower())
+            if tf == 0:
+                continue
+            df = doc_freq.get(term.lower(), 1)
+            idf = math.log((corpus_size - df + 0.5) / (df + 0.5) + 1)
+            tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * doc_len / avg_doc_len))
+            score += idf * tf_norm
+        return score
+
+    def search_hybrid(
+        self,
+        query: str,
+        top_k: int = 5,
+        filter_type: Optional[str] = None,
+        alpha: float = 0.7,
+    ) -> List[SearchResult]:
+        """
+        Hybrid search combining:
+          - Semantic (vector) similarity via ChromaDB   (weight: alpha)
+          - Keyword (BM25) scoring computed in-memory   (weight: 1-alpha)
+
+        alpha=1.0  → pure vector search
+        alpha=0.0  → pure BM25 keyword search
+        alpha=0.7  → 70% vector + 30% BM25 (default)
+        """
+        self._ensure_initialized()
+
+        if self._collection.count() == 0:
+            return []
+
+        where_filter = {"type": filter_type} if filter_type else None
+
+        # ── Step 1: retrieve a larger candidate pool via ChromaDB vector search ──
+        candidate_k = min(top_k * 4, self._collection.count())
+        try:
+            raw = self._collection.query(
+                query_texts=[query],
+                n_results=candidate_k,
+                where=where_filter,
+            )
+            vec_results = []
+            if raw and raw['documents'] and raw['documents'][0]:
+                for i, doc in enumerate(raw['documents'][0]):
+                    metadata = raw['metadatas'][0][i] if raw.get('metadatas') else {}
+                    distance = raw['distances'][0][i] if raw.get('distances') else 0.5
+                    vec_results.append(SearchResult(content=doc, metadata=metadata, score=distance))
+        except Exception as e:
+            print(f"[RAG] Hybrid vector search error: {e}")
+            return self.search(query, top_k, filter_type)  # fallback to pure vector
+
+        if not vec_results:
+            return []
+
+        # ── Step 2: BM25 scoring over the candidate pool ──────────────────────
+        query_terms = re.findall(r'\w+', query.lower())
+        corpus_size = len(vec_results)
+        doc_freq: Dict[str, int] = {}
+        for term in query_terms:
+            for r in vec_results:
+                if term in r.content.lower():
+                    doc_freq[term] = doc_freq.get(term, 0) + 1
+
+        avg_doc_len = sum(len(r.content.split()) for r in vec_results) / max(corpus_size, 1)
+
+        # ── Step 3: normalise both scores and combine ─────────────────────────
+        vec_sims = [max(0.0, 1.0 - r.score) for r in vec_results]
+        max_vec = max(vec_sims) if vec_sims else 1.0
+        norm_vec = [s / max_vec if max_vec > 0 else s for s in vec_sims]
+
+        bm25_scores = [
+            self._bm25_score(query_terms, r.content, corpus_size, doc_freq, avg_doc_len=avg_doc_len)
+            for r in vec_results
+        ]
+        max_bm25 = max(bm25_scores) if bm25_scores else 1.0
+        norm_bm25 = [s / max_bm25 if max_bm25 > 0 else s for s in bm25_scores]
+
+        combined = [
+            (vec_results[i], alpha * norm_vec[i] + (1 - alpha) * norm_bm25[i])
+            for i in range(corpus_size)
+        ]
+        combined.sort(key=lambda x: x[1], reverse=True)
+
+        final = []
+        for result, hybrid_score in combined[:top_k]:
+            result.score = max(0.0, 1.0 - hybrid_score)
+            result.metadata['hybrid_score'] = round(hybrid_score, 4)
+            final.append(result)
+
+        return final
+
+    def search_formatted_hybrid(
+        self,
+        query: str,
+        top_k: int = 5,
+        alpha: float = 0.7,
+    ) -> str:
+        """Hybrid search and return formatted context string for LLM injection"""
+        results = self.search_hybrid(query, top_k, alpha=alpha)
+        if not results:
+            return ""
+
+        parts = ["--- RAG Hybrid Search Results (Semantic + Keyword) ---"]
+        for i, result in enumerate(results, 1):
+            source = result.metadata.get('source', 'unknown')
+            section = result.metadata.get('section', '')
+            doc_type = result.metadata.get('type', '')
+            hybrid_score = result.metadata.get('hybrid_score', 0.0)
+
+            header = f"[{i}] Source: {source}"
+            if section:
+                header += f" | Section: {section}"
+            header += f" | Type: {doc_type} | Hybrid Score: {hybrid_score:.2f}"
+
+            parts.append(header)
+            parts.append(result.content)
+            parts.append("")
+
+        return "\n".join(parts)
+
+    async def search_hybrid_async(
+        self,
+        query: str,
+        top_k: int = 5,
+        filter_type: Optional[str] = None,
+        alpha: float = 0.7,
+    ) -> List[SearchResult]:
+        """Async wrapper for search_hybrid"""
+        return await asyncio.to_thread(self.search_hybrid, query, top_k, filter_type, alpha)
+
+    async def search_formatted_hybrid_async(
+        self,
+        query: str,
+        top_k: int = 5,
+        alpha: float = 0.7,
+    ) -> str:
+        """Async wrapper for search_formatted_hybrid"""
+        return await asyncio.to_thread(self.search_formatted_hybrid, query, top_k, alpha)
+
 
     def get_documents(self) -> List[Dict[str, Any]]:
         """List all indexed documents (grouped by source)"""

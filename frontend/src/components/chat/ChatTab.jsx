@@ -1,7 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Trash2, Copy, Check, Bot, User, Search, BookOpen, FolderOpen } from 'lucide-react';
+import {
+  Bot,
+  BookOpen,
+  Check,
+  ClipboardList,
+  Copy,
+  FolderOpen,
+  Radio,
+  Search,
+  Send,
+  Settings,
+  Trash2,
+  User,
+} from 'lucide-react';
 import { streamChat, deleteChatHistory, saveChatMessage } from '../../utils/api';
 import { useToast } from '../../App';
 
@@ -9,7 +22,6 @@ function generateSessionId() {
   return 'session_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-/* ─── Code Block with Copy ──────────────────────────────────────── */
 function CodeBlock({ children, className }) {
   const [copied, setCopied] = useState(false);
   const lang = className?.replace('language-', '') || '';
@@ -22,18 +34,17 @@ function CodeBlock({ children, className }) {
 
   return (
     <div className="code-block-wrapper">
-      <button className="code-copy-btn" onClick={handleCopy}>
+      <button className="code-copy-btn" onClick={handleCopy} type="button">
         {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
       </button>
       <pre>
         <code className={className}>{children}</code>
       </pre>
-      {lang && <span className="badge badge-primary" style={{ position: 'absolute', top: 8, left: 8, fontSize: '0.65rem' }}>{lang}</span>}
+      {lang && <span className="badge badge-primary code-lang">{lang}</span>}
     </div>
   );
 }
 
-/* ─── Single Message ────────────────────────────────────────────── */
 function ChatMessage({ message }) {
   const isUser = message.role === 'user';
 
@@ -64,7 +75,6 @@ function ChatMessage({ message }) {
   );
 }
 
-/* ─── Typing Indicator ──────────────────────────────────────────── */
 function TypingIndicator() {
   return (
     <div className="chat-message assistant">
@@ -78,35 +88,35 @@ function TypingIndicator() {
   );
 }
 
-/* ─── Welcome ───────────────────────────────────────────────────────────── */
 function WelcomeScreen({ onHintClick }) {
   const hints = [
-    { icon: '🔍', text: 'What CAN keywords are available in our framework?' },
-    { icon: '📂', text: 'Show me DLT logging resources for BMW Telematics' },
-    { icon: '🧪', text: 'How to use UART Library for IVI testing?' },
-    { icon: '📡', text: 'List all HMI test patterns from knowledge base' },
-    { icon: '📋', text: 'What test cases exist for CNeCall feature?' },
-    { icon: '⚙️', text: 'Explain our Robot Framework project structure' },
+    { icon: Search, text: 'What CAN keywords are available in our framework?' },
+    { icon: FolderOpen, text: 'Show me DLT logging resources for BMW Telematics' },
+    { icon: Radio, text: 'How do I use the UART library for IVI testing?' },
+    { icon: BookOpen, text: 'List all HMI test patterns from the knowledge base' },
+    { icon: ClipboardList, text: 'What test cases exist for the CNeCall feature?' },
+    { icon: Settings, text: 'Explain our Robot Framework project structure' },
   ];
 
   return (
     <div className="welcome-screen">
-      <Search size={48} style={{ color: 'var(--primary)', opacity: 0.6 }} />
+      <Search size={42} />
       <h2>Knowledge Search</h2>
-      <p>Search project knowledge, framework resources, and test patterns.
-        <br/>Ask about any project, feature, or protocol — powered by RAG.</p>
+      <p>Ask about project docs, framework resources, protocol details, and test patterns.</p>
       <div className="welcome-hints">
-        {hints.map((h, i) => (
-          <div key={i} className="welcome-hint" onClick={() => onHintClick(h.text)}>
-            <span>{h.icon}</span> {h.text}
-          </div>
-        ))}
+        {hints.map((hint) => {
+          const Icon = hint.icon;
+          return (
+            <button key={hint.text} className="welcome-hint" onClick={() => onHintClick(hint.text)} type="button">
+              <Icon size={15} /> <span>{hint.text}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-/* ─── Main Chat Tab ─────────────────────────────────────────────── */
 export default function ChatTab({ model }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -136,8 +146,7 @@ export default function ChatTab({ model }) {
     const trimmed = (text || input).trim();
     if (!trimmed || streaming) return;
 
-    const userMsg = { role: 'user', content: trimmed };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
     setInput('');
     setStreaming(true);
 
@@ -145,31 +154,25 @@ export default function ChatTab({ model }) {
       textareaRef.current.style.height = 'auto';
     }
 
-    // Append empty assistant message for streaming
-    const assistantIdx = messages.length + 1;
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
-
-    // Persist user message to MongoDB (fire-and-forget)
     saveChatMessage(sessionId, 'user', trimmed).catch(() => {});
 
-    const payload = {
-      message: trimmed,
-      session_id: sessionId,
-      model,
-      mode: 'chat',
-      use_rag: useRag,
-    };
-
     controllerRef.current = await streamChat(
-      payload,
+      {
+        message: trimmed,
+        session_id: sessionId,
+        model,
+        mode: 'chat',
+        use_rag: useRag,
+      },
       (chunk) => {
-        const text = chunk.chunk || chunk.content || chunk.text || chunk.delta || '';
-        if (text) {
+        const textChunk = chunk.chunk || chunk.content || chunk.text || chunk.delta || '';
+        if (textChunk) {
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
             if (last && last.role === 'assistant') {
-              updated[updated.length - 1] = { ...last, content: last.content + text };
+              updated[updated.length - 1] = { ...last, content: last.content + textChunk };
             }
             return updated;
           });
@@ -177,7 +180,6 @@ export default function ChatTab({ model }) {
       },
       () => {
         setStreaming(false);
-        // Persist final assistant response to MongoDB
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last && last.role === 'assistant' && last.content) {
@@ -188,14 +190,13 @@ export default function ChatTab({ model }) {
       },
       (err) => {
         setStreaming(false);
-        // If the assistant message is still empty, update it with an error or remove it
         setMessages((prev) => {
           const updated = [...prev];
           const last = updated[updated.length - 1];
           if (last && last.role === 'assistant' && !last.content) {
             updated[updated.length - 1] = {
               ...last,
-              content: `⚠️ Error: ${err.message}. Make sure the backend is running at http://localhost:8000`,
+              content: `Error: ${err.message}. Make sure the backend is running at http://localhost:8000`,
             };
           }
           return updated;
@@ -226,19 +227,19 @@ export default function ChatTab({ model }) {
   return (
     <div className="chat-container">
       <div className="chat-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Search size={18} style={{ color: 'var(--primary)' }} />
-          <span style={{ fontWeight: 600 }}>Knowledge Search</span>
+        <div className="chat-title">
+          <Search size={18} />
+          <span>Knowledge Search</span>
           <span className="badge badge-primary">{model}</span>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={clearHistory} title="Clear history">
+        <button className="btn btn-ghost btn-sm" onClick={clearHistory} title="Clear history" type="button">
           <Trash2 size={14} /> Clear
         </button>
       </div>
 
       <div className="chat-messages">
         {messages.length === 0 && !streaming ? (
-          <WelcomeScreen onHintClick={(h) => sendMessage(h)} />
+          <WelcomeScreen onHintClick={(hint) => sendMessage(hint)} />
         ) : (
           messages.map((msg, i) => <ChatMessage key={i} message={msg} />)
         )}
@@ -247,14 +248,14 @@ export default function ChatTab({ model }) {
       </div>
 
       <div className="chat-input-area">
-        {/* RAG toggle */}
         <div className="chat-modes">
           <button
             className={`mode-pill ${useRag ? 'rag-on' : 'rag-off'}`}
             onClick={() => setUseRag(!useRag)}
-            title={useRag ? 'RAG is ON — click to disable' : 'RAG is OFF — click to enable'}
+            title={useRag ? 'RAG is on' : 'RAG is off'}
+            type="button"
           >
-            {useRag ? '📚 RAG ON' : '📚 RAG OFF'}
+            <BookOpen size={14} /> {useRag ? 'RAG on' : 'RAG off'}
           </button>
         </div>
 
@@ -264,7 +265,7 @@ export default function ChatTab({ model }) {
             value={input}
             onChange={(e) => { setInput(e.target.value); autoResize(); }}
             onKeyDown={handleKeyDown}
-            placeholder="Search knowledge base — ask about projects, features, protocols, keywords..."
+            placeholder="Ask about projects, features, protocols, keywords..."
             rows={1}
             disabled={streaming}
           />
@@ -273,6 +274,7 @@ export default function ChatTab({ model }) {
             onClick={() => sendMessage()}
             disabled={!input.trim() || streaming}
             title="Send message"
+            type="button"
           >
             <Send size={18} />
           </button>
